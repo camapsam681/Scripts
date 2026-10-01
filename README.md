@@ -1,5 +1,5 @@
 -- ===================================================
--- BOT SAMM.NET - NÚT ĐÚNG VỊ TRÍ, FPS GÓC PHẢI
+-- BOT SAMM.NET - HỢP LỆ VỚI KEY MỚI (D<device>)
 -- ===================================================
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -42,13 +42,53 @@ local isBayOn = false
 local isXuyenTuongOn = false
 local isBatTuOn = false
 local isActivated = false
+local currentKey = nil
+local keyExpireTime = nil
+local keyDeviceLimit = 0
 
 -- ===================================================
--- KIỂM TRA KEY
+-- HÀM KIỂM TRA KEY MỚI
+-- Định dạng: SAMM-<duration>-D<device>-<random>-<random>
+-- duration: 1P, 5P, 1H, 1D, 1W, 1M, VV
+-- device: D1 đến D5000
 -- ===================================================
+local function parseKey(key)
+    -- Pattern: SAMM-<duration>-D<device>-<rand4>-<rand4>
+    local duration, device, r1, r2 = key:match("^SAMM%-(%w+)%-(D%d+)%-([A-Z0-9]+)%-([A-Z0-9]+)$")
+    if not duration or not device or not r1 or not r2 then
+        return nil
+    end
+    
+    -- Kiểm tra duration hợp lệ
+    local validDurations = {
+        ["1P"] = 60,        -- 1 phút = 60 giây
+        ["5P"] = 300,       -- 5 phút = 300 giây
+        ["1H"] = 3600,      -- 1 giờ = 3600 giây
+        ["1D"] = 86400,     -- 1 ngày = 86400 giây
+        ["1W"] = 604800,    -- 1 tuần
+        ["1M"] = 2592000,   -- 1 tháng (30 ngày)
+        ["VV"] = -1,        -- Vĩnh viễn
+    }
+    
+    if not validDurations[duration] then
+        return nil
+    end
+    
+    -- Lấy số thiết bị
+    local deviceNum = tonumber(device:sub(2)) -- Bỏ chữ "D"
+    if not deviceNum or deviceNum < 1 or deviceNum > 5000 then
+        return nil
+    end
+    
+    return {
+        duration = duration,
+        durationSeconds = validDurations[duration],
+        device = deviceNum,
+    }
+end
+
 local function isValidKey(key)
-    local pattern = "^SAMM%-[A-Z0-9]+%-[A-Z0-9]+%-[A-Z0-9]+$"
-    return key:match(pattern) ~= nil
+    return parseKey(key) ~= nil
 end
 
 -- ===================================================
@@ -512,7 +552,7 @@ KeyInput.BorderSizePixel = 0
 KeyInput.Position = UDim2.new(0.1, 0, 0.2, 0)
 KeyInput.Size = UDim2.new(0.8, 0, 0, 40)
 KeyInput.Text = ""
-KeyInput.PlaceholderText = "Nhập Key (SAMM-XXXX-XXXX-XXXX)"
+KeyInput.PlaceholderText = "Nhập Key (SAMM-1H-D10-XXXX-XXXX)"
 KeyInput.TextColor3 = Color3.fromRGB(0, 255, 0)
 KeyInput.TextScaled = true
 KeyInput.Font = Enum.Font.Code
@@ -594,28 +634,40 @@ end)
 
 KeyBtn.MouseButton1Click:Connect(function()
     local key = KeyInput.Text:upper():gsub("%s+", "")
-    if isValidKey(key) then
+    local info = parseKey(key)
+    
+    if info then
         isActivated = true
-        KeyStatus.Text = "✅ KÍCH HOẠT THÀNH CÔNG!"
+        currentKey = key
+        keyDeviceLimit = info.device
+        
+        if info.durationSeconds == -1 then
+            keyExpireTime = nil -- Vĩnh viễn
+            KeyStatus.Text = "✅ KEY VĨNH VIỄN - " .. keyDeviceLimit .. " thiết bị!"
+        else
+            keyExpireTime = tick() + info.durationSeconds
+            KeyStatus.Text = "✅ KEY " .. info.duration .. " - " .. keyDeviceLimit .. " thiết bị!"
+        end
+        
         KeyStatus.TextColor3 = Color3.fromRGB(0, 255, 0)
         task.wait(1)
         KeyFrame.Visible = false
         MainFrame.Visible = true
-        botReply("Key hợp lệ! Chào mừng bạn đến với BOT SAMM.NET!")
+        botReply("Key hợp lệ! (" .. info.duration .. ", " .. keyDeviceLimit .. " thiết bị)")
     else
-        KeyStatus.Text = "❌ KEY KHÔNG HỢP LỆ! (VD: SAMM-A1B2-C3D4-E5F6)"
+        KeyStatus.Text = "❌ KEY KHÔNG HỢP LỆ! (VD: SAMM-1H-D10-AB12-CD34)"
         KeyStatus.TextColor3 = Color3.fromRGB(255, 0, 0)
     end
 end)
 
 -- ===================================================
--- NÚT SAMM.NET (ĐÚNG VỊ TRÍ TRONG ẢNH)
+-- NÚT SAMM.NET
 -- ===================================================
 ToggleBtn.Name = "ToggleBtn"
 ToggleBtn.Parent = ScreenGui
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Position = UDim2.new(0, 10, 0, 200) -- Vị trí trong ảnh: dưới nút "Cửa hàng"
+ToggleBtn.Position = UDim2.new(0, 10, 0, 200)
 ToggleBtn.Size = UDim2.new(0, 90, 0, 40)
 ToggleBtn.Text = "SAMM.NET"
 ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 0)
@@ -732,13 +784,10 @@ local ChatStroke = Instance.new("UIStroke", ChatBox)
 ChatStroke.Color = Color3.fromRGB(0, 200, 100)
 ChatStroke.Thickness = 1
 
--- ===================================================
--- FPS Ở GÓC TRÊN BÊN PHẢI
--- ===================================================
 FPSLabel.Name = "FPSLabel"
 FPSLabel.Parent = ScreenGui
 FPSLabel.BackgroundTransparency = 1
-FPSLabel.Position = UDim2.new(1, -150, 0, 80) -- Góc trên phải
+FPSLabel.Position = UDim2.new(1, -150, 0, 80)
 FPSLabel.Size = UDim2.new(0, 140, 0, 30)
 FPSLabel.Text = "FPS: 120"
 FPSLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -778,6 +827,19 @@ game.Players.LocalPlayer.CharacterAdded:Connect(function()
     local char = game.Players.LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         homePosition = char.HumanoidRootPart.Position
+    end
+end)
+
+-- Kiểm tra hết hạn Key
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if isActivated and keyExpireTime and tick() > keyExpireTime then
+            isActivated = false
+            MainFrame.Visible = false
+            KeyFrame.Visible = false
+            botReply("Key đã hết hạn! Vui lòng nhập Key mới.", Color3.fromRGB(255, 100, 100))
+        end
     end
 end)
 
